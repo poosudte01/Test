@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ทริปทีม 2026 — เลือกจุดหมาย</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --teal: #0d9488; --teal-light: #ccfbf1; --teal-dark: #0f766e; --teal-faint: #f0fdfa;
+  --amber: #f59e0b;
+  --bg: #f8fafc; --surface: #ffffff; --border: #e2e8f0;
+  --text: #1e293b; --text-muted: #64748b; --text-hint: #94a3b8;
+  --radius: 12px; --radius-sm: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+}
+body { font-family: 'Segoe UI','Sarabun','Noto Sans Thai',sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+/* ── SETUP OVERLAY ── */
+#setup-overlay {
+  position: fixed; inset: 0; background: rgba(15,23,42,0.85);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 99999; padding: 1rem;
+}
+.setup-box {
+  background: white; border-radius: 16px; padding: 2rem;
+  max-width: 560px; width: 100%; box-shadow: 0 25px 50px rgba(0,0,0,0.4);
+}
+.setup-title { font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; }
+.setup-sub { font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1.5rem; line-height: 1.6; }
+.setup-step { display: flex; gap: 12px; margin-bottom: 1rem; align-items: flex-start; }
+.step-num {
+  background: var(--teal); color: white; border-radius: 50%;
+  width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+  font-size: 0.8rem; font-weight: 700; flex-shrink: 0; margin-top: 1px;
+}
+.step-text { font-size: 0.875rem; line-height: 1.6; color: var(--text); }
+.step-text a { color: var(--teal); text-decoration: none; font-weight: 600; }
+.step-text code {
+  background: #f1f5f9; padding: 2px 6px; border-radius: 4px;
+  font-size: 0.8rem; font-family: monospace; color: #c2410c;
+}
+.setup-note {
+  background: #fef9c3; border: 1px solid #fde68a; border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem; font-size: 0.8rem; color: #92400e; margin-top: 1rem; line-height: 1.6;
+}
+
+/* ── STATUS BAR ── */
+#status-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 1.5rem; font-size: 0.8rem;
+  background: #ecfdf5; border-bottom: 1px solid #a7f3d0; color: #065f46;
+}
+#status-bar.offline { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
+#status-bar.connecting { background: #fffbeb; border-color: #fcd34d; color: #92400e; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+/* ── HEADER ── */
+header {
+  background: linear-gradient(135deg, #0f766e 0%, #0d9488 60%, #14b8a6 100%);
+  color: white; padding: 1.5rem 1.5rem 1.25rem;
+}
+.header-row { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 1rem; }
+.header-emoji { font-size: 2.5rem; line-height: 1; flex-shrink: 0; }
+.header-title { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; }
+.header-sub { font-size: 0.875rem; opacity: 0.88; margin-top: 2px; }
+.stats-bar { display: flex; gap: 8px; flex-wrap: wrap; }
+.stat-pill {
+  background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 20px; padding: 5px 14px; font-size: 0.82rem;
+  display: flex; align-items: center; gap: 5px;
+}
+.stat-pill strong { font-weight: 700; }
+
+/* ── MAP ── */
+#map-wrapper { position: relative; }
+#map { height: 430px; width: 100%; }
+.map-badge {
+  position: absolute; z-index: 1000; bottom: 12px; right: 12px;
+  background: var(--teal); color: white; border-radius: var(--radius-sm);
+  padding: 5px 12px; font-size: 0.78rem; font-weight: 600;
+  box-shadow: var(--shadow-md); pointer-events: none;
+}
+.map-hint {
+  position: absolute; z-index: 1000; bottom: 12px; left: 12px;
+  background: rgba(255,255,255,0.92); border-radius: var(--radius-sm);
+  padding: 5px 10px; font-size: 0.75rem; color: var(--text-muted);
+  box-shadow: var(--shadow);
+}
+
+/* ── MAIN ── */
+main { max-width: 1240px; margin: 0 auto; padding: 1.5rem; }
+.two-col { display: grid; grid-template-columns: 340px 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+@media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+
+/* ── CARD ── */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; box-shadow: var(--shadow); }
+.card-title { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; display: flex; align-items: center; gap: 8px; }
+
+/* ── FORM ── */
+.form-group { margin-bottom: 0.875rem; }
+.form-group label { display: block; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.06em; }
+.form-group input, .form-group select, .form-group textarea {
+  width: 100%; padding: 9px 12px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); font-size: 0.9rem; font-family: inherit;
+  color: var(--text); background: var(--bg); transition: all 0.2s;
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+  outline: none; border-color: var(--teal); background: white;
+  box-shadow: 0 0 0 3px rgba(13,148,136,0.12);
+}
+.form-group textarea { resize: vertical; min-height: 72px; line-height: 1.5; }
+.btn-add {
+  width: 100%; padding: 11px; background: var(--teal); color: white;
+  border: none; border-radius: var(--radius-sm); font-size: 0.95rem;
+  font-weight: 600; cursor: pointer; transition: all 0.2s; font-family: inherit;
+}
+.btn-add:hover { background: var(--teal-dark); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+.btn-add:disabled { background: #94a3b8; cursor: not-allowed; transform: none; }
+.tips-box {
+  background: var(--teal-faint); border: 1px solid #99f6e4;
+  border-radius: var(--radius-sm); padding: 0.875rem 1rem;
+  font-size: 0.82rem; color: #0f766e; margin-top: 1rem; line-height: 1.6;
+}
+.tips-box ul { padding-left: 1.25rem; margin-top: 4px; }
+
+/* ── LEADERBOARD ── */
+.lb-item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.lb-item:last-child { border-bottom: none; }
+.lb-medal { font-size: 1.25rem; flex-shrink: 0; width: 28px; text-align: center; }
+.lb-info { flex: 1; min-width: 0; }
+.lb-name { font-size: 0.88rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lb-meta { font-size: 0.75rem; color: var(--text-muted); }
+.lb-bar-wrap { height: 4px; background: var(--border); border-radius: 2px; margin-top: 4px; }
+.lb-bar-fill { height: 4px; background: var(--teal); border-radius: 2px; transition: width 0.5s ease; }
+.lb-count { font-size: 1rem; font-weight: 700; color: var(--teal); flex-shrink: 0; }
+
+/* ── SECTION HEAD ── */
+.section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; flex-wrap: wrap; gap: 8px; }
+.section-title { font-size: 1.1rem; font-weight: 600; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  padding: 5px 13px; border: 1px solid var(--border); border-radius: 20px;
+  font-size: 0.8rem; cursor: pointer; background: var(--surface);
+  color: var(--text-muted); transition: all 0.15s; font-family: inherit;
+}
+.chip:hover { border-color: var(--teal); color: var(--teal); }
+.chip.on { background: var(--teal); color: white; border-color: var(--teal); }
+
+/* ── PLACES GRID ── */
+.places-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(255px, 1fr)); gap: 1rem; }
+.place-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
+  transition: box-shadow 0.2s, transform 0.2s; display: flex; flex-direction: column;
+}
+.place-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+.place-card.top-voted { border-color: var(--amber); box-shadow: 0 0 0 2px rgba(245,158,11,0.2); }
+.place-body { padding: 1rem; flex: 1; }
+.type-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 12px; font-size: 0.73rem; font-weight: 600; margin-bottom: 8px; }
+.place-name { font-size: 1rem; font-weight: 700; margin-bottom: 2px; line-height: 1.3; }
+.place-prov { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px; }
+.place-dist { font-size: 0.72rem; color: var(--text-hint); margin-bottom: 6px; }
+.place-desc { font-size: 0.82rem; color: var(--text-muted); line-height: 1.55; margin-bottom: 8px; }
+.place-by { font-size: 0.74rem; color: var(--text-hint); }
+.place-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.75rem 1rem; border-top: 1px solid var(--border); background: var(--bg);
+}
+.vote-score { display: flex; align-items: baseline; gap: 4px; }
+.vote-num { font-size: 1.4rem; font-weight: 700; color: var(--teal); line-height: 1; }
+.vote-lbl { font-size: 0.7rem; color: var(--text-muted); }
+.btn-vote {
+  padding: 7px 16px; border-radius: var(--radius-sm);
+  border: 1.5px solid var(--teal); background: white; color: var(--teal);
+  font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  transition: all 0.15s; display: flex; align-items: center; gap: 5px;
+  font-family: inherit;
+}
+.btn-vote:hover { background: var(--teal); color: white; }
+.btn-vote.voted { background: var(--teal); color: white; }
+.btn-vote.voted:hover { background: var(--teal-dark); }
+
+/* ── LOADING / EMPTY ── */
+.empty { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
+.empty .big { font-size: 2.5rem; margin-bottom: 0.5rem; }
+.empty p { font-size: 0.9rem; line-height: 1.6; }
+.spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid rgba(13,148,136,0.3); border-top-color: var(--teal); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── LIVE INDICATOR ── */
+.live-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 20px;
+  padding: 3px 10px; font-size: 0.72rem; color: #065f46; font-weight: 600;
+}
+.live-dot { width: 6px; height: 6px; border-radius: 50%; background: #10b981; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{ opacity:1; } 50%{ opacity:0.4; } }
+
+/* ── TOAST ── */
+.toast {
+  position: fixed; bottom: 1.5rem; left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: #1e293b; color: white; padding: 10px 20px;
+  border-radius: var(--radius-sm); font-size: 0.875rem;
+  transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1); z-index: 9999;
+  box-shadow: var(--shadow-md); white-space: nowrap;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════
+     SETUP OVERLAY (hidden when configured)
+════════════════════════════════ -->
+<div id="setup-overlay" style="display:none">
+  <div class="setup-box">
+    <div style="font-size:2rem;margin-bottom:0.5rem">🔧</div>
+    <div class="setup-title">ตั้งค่า Firebase ก่อนใช้งาน</div>
+    <div class="setup-sub">เพื่อให้ทุกคนในทีมเห็นข้อมูลชุดเดียวกัน ต้องเชื่อมต่อกับ Firebase ก่อน (ฟรี ใช้เวลาประมาณ 5 นาที)</div>
+
+    <div class="setup-step">
+      <div class="step-num">1</div>
+      <div class="step-text">ไปที่ <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a> → สร้าง Project ใหม่ → ตั้งชื่อ เช่น <code>team-trip-2026</code></div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">2</div>
+      <div class="step-text">ใน Project → คลิก <strong>Build</strong> → <strong>Realtime Database</strong> → <strong>Create Database</strong> → เลือก <code>asia-southeast1</code> (สิงคโปร์) → <strong>Start in test mode</strong></div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">3</div>
+      <div class="step-text">กลับหน้า Project Overview → คลิกไอคอน <strong>&lt;/&gt;</strong> (Web) → ลงทะเบียน App → คัดลอก <code>firebaseConfig</code> ที่ได้</div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">4</div>
+      <div class="step-text">เปิดไฟล์ HTML นี้ใน Notepad/VSCode → หาข้อความ <code>PASTE_YOUR_API_KEY_HERE</code> → แทนที่ค่าทั้ง 7 บรรทัดด้วย config ที่คัดลอกมา → บันทึกไฟล์</div>
+    </div>
+    <div class="setup-step">
+      <div class="step-num">5</div>
+      <div class="step-text">โฮสต์ไฟล์ฟรีด้วย <a href="https://app.netlify.com/drop" target="_blank">Netlify Drop</a> → ลาก HTML ไฟล์ไปวาง → คัดลอก URL → แชร์ให้ทีม 🎉</div>
+    </div>
+
+    <div class="setup-note">
+      ⏱️ <strong>Test mode</strong> ให้อ่าน/เขียนได้ฟรี 30 วัน — เหมาะสำหรับโหวตทริป หากต้องการใช้นานกว่านั้นให้อัปเดต Rules ใน Firebase console
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════
+     STATUS BAR
+════════════════════════════════ -->
+<div id="status-bar" class="connecting">
+  <div class="status-dot"></div>
+  <span id="status-text">กำลังเชื่อมต่อ Firebase...</span>
+  <div style="margin-left:auto" id="live-wrap"></div>
+</div>
+
+<!-- ════════════════════════════════
+     HEADER
+════════════════════════════════ -->
+<header>
+  <div class="header-row">
+    <div class="header-emoji">🗺️</div>
+    <div>
+      <div class="header-title">ทริปทีม 2026</div>
+      <div class="header-sub">เสนอ &amp; โหวตจุดหมาย — ออกเดินทางจากกรุงเทพฯ · อัปเดต real-time</div>
+    </div>
+  </div>
+  <div class="stats-bar">
+    <div class="stat-pill">📍 <strong id="s-places">0</strong> สถานที่</div>
+    <div class="stat-pill">❤️ <strong id="s-votes">0</strong> โหวตรวม</div>
+    <div class="stat-pill">🏆 อันดับ 1: <strong id="s-top">—</strong></div>
+    <div class="stat-pill">👥 ทีม 11–30 คน</div>
+  </div>
+</header>
+
+<!-- ════════════════════════════════
+     MAP
+════════════════════════════════ -->
+<div id="map-wrapper">
+  <div id="map"></div>
+  <div class="map-badge">📍 กรุงเทพฯ จุดออกเดินทาง</div>
+  <div class="map-hint">🖱️ Scroll เพื่อ Zoom · คลิก Marker ดูรายละเอียด</div>
+</div>
+
+<!-- ════════════════════════════════
+     MAIN
+════════════════════════════════ -->
+<main>
+  <div class="two-col">
+
+    <!-- FORM -->
+    <div>
+      <div class="card">
+        <div class="card-title">✈️ เสนอสถานที่ใหม่</div>
+        <div class="form-group">
+          <label>ชื่อสถานที่ *</label>
+          <input id="f-name" type="text" placeholder="เช่น ดอยอินทนนท์, หาดนพรัตน์...">
+        </div>
+        <div class="form-group">
+          <label>จังหวัด / พื้นที่ *</label>
+          <select id="f-prov">
+            <option value="">— เลือกจังหวัด —</option>
+            <optgroup label="🔵 ภาคเหนือ">
+              <option value="เชียงใหม่">เชียงใหม่</option>
+              <option value="เชียงราย">เชียงราย</option>
+              <option value="น่าน">น่าน</option>
+              <option value="แม่ฮ่องสอน">แม่ฮ่องสอน</option>
+              <option value="พะเยา">พะเยา</option>
+              <option value="ลำปาง">ลำปาง</option>
+              <option value="สุโขทัย">สุโขทัย</option>
+              <option value="ตาก">ตาก</option>
+            </optgroup>
+            <optgroup label="🟢 ภาคกลาง">
+              <option value="กาญจนบุรี">กาญจนบุรี</option>
+              <option value="อยุธยา">พระนครศรีอยุธยา</option>
+              <option value="ลพบุรี">ลพบุรี</option>
+              <option value="ราชบุรี">ราชบุรี</option>
+              <option value="เพชรบุรี">เพชรบุรี</option>
+              <option value="สระบุรี">สระบุรี</option>
+            </optgroup>
+            <optgroup label="🟠 ภาคตะวันออก">
+              <option value="ชลบุรี">ชลบุรี (พัทยา)</option>
+              <option value="ระยอง">ระยอง</option>
+              <option value="จันทบุรี">จันทบุรี</option>
+              <option value="ตราด">ตราด (เกาะช้าง)</option>
+              <option value="นครราชสีมา">นครราชสีมา (เขาใหญ่)</option>
+            </optgroup>
+            <optgroup label="🟡 ภาคอีสาน">
+              <option value="เลย">เลย (ภูกระดึง)</option>
+              <option value="ขอนแก่น">ขอนแก่น</option>
+              <option value="อุบลราชธานี">อุบลราชธานี</option>
+              <option value="นครพนม">นครพนม</option>
+              <option value="สกลนคร">สกลนคร</option>
+              <option value="บึงกาฬ">บึงกาฬ</option>
+              <option value="มุกดาหาร">มุกดาหาร</option>
+            </optgroup>
+            <optgroup label="🔴 ภาคใต้">
+              <option value="ประจวบคีรีขันธ์">ประจวบฯ (หัวหิน)</option>
+              <option value="ชุมพร">ชุมพร</option>
+              <option value="สุราษฎร์ธานี">สุราษฎร์ธานี (เกาะสมุย)</option>
+              <option value="นครศรีธรรมราช">นครศรีธรรมราช</option>
+              <option value="กระบี่">กระบี่</option>
+              <option value="ภูเก็ต">ภูเก็ต</option>
+              <option value="พังงา">พังงา (เขาหลัก)</option>
+              <option value="ตรัง">ตรัง</option>
+              <option value="สตูล">สตูล</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>ประเภท</label>
+          <select id="f-type">
+            <option value="sea">🌊 ทะเล / เกาะ</option>
+            <option value="nature">⛰️ ภูเขา / ธรรมชาติ</option>
+            <option value="history">🏛️ ประวัติศาสตร์ / วัฒนธรรม</option>
+            <option value="food">🍜 กิน / ช้อปปิ้ง</option>
+            <option value="resort">🏖️ พักผ่อน / รีสอร์ท</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>ทำไมอยากไป? (ไม่บังคับ)</label>
+          <textarea id="f-desc" placeholder="บอกเพื่อนๆ ว่ามีอะไรน่าสนใจ..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>ชื่อผู้เสนอ *</label>
+          <input id="f-who" type="text" placeholder="ชื่อของคุณ...">
+        </div>
+        <button class="btn-add" id="btn-submit" onclick="addPlace()">➕ เพิ่มสถานที่</button>
+      </div>
+
+      <div class="tips-box">
+        💡 <strong>วิธีใช้งาน</strong>
+        <ul>
+          <li>ทุกคนเปิด link เดียวกันจากมือถือ/คอมตัวเอง</li>
+          <li>เพิ่มสถานที่ที่อยากไป — ทุกคนเห็นพร้อมกันทันที</li>
+          <li>โหวต ❤️ ได้คนละ 1 ครั้งต่อสถานที่</li>
+          <li>คะแนนอัปเดต real-time ไม่ต้องรีเฟรช</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- LEADERBOARD -->
+    <div class="card" style="align-self:start">
+      <div class="card-title" style="justify-content:space-between">
+        <span>🏆 อันดับยอดนิยม</span>
+        <span id="live-badge-lb"></span>
+      </div>
+      <div id="lb-body">
+        <div class="empty">
+          <div class="big"><div class="spinner"></div></div>
+          <p style="margin-top:0.5rem">กำลังโหลดข้อมูล...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PLACES -->
+  <div class="section-head">
+    <div class="section-title">📍 สถานที่ทั้งหมด (<span id="count-lbl">0</span>)</div>
+    <div class="chips">
+      <button class="chip on" onclick="setFilter('all',this)">ทั้งหมด</button>
+      <button class="chip" onclick="setFilter('sea',this)">🌊 ทะเล</button>
+      <button class="chip" onclick="setFilter('nature',this)">⛰️ ธรรมชาติ</button>
+      <button class="chip" onclick="setFilter('history',this)">🏛️ ประวัติศาสตร์</button>
+      <button class="chip" onclick="setFilter('food',this)">🍜 กิน</button>
+      <button class="chip" onclick="setFilter('resort',this)">🏖️ พักผ่อน</button>
+    </div>
+  </div>
+  <div class="places-grid" id="grid">
+    <div style="grid-column:1/-1">
+      <div class="empty">
+        <div class="big"><div class="spinner"></div></div>
+        <p style="margin-top:0.5rem">กำลังโหลดข้อมูล...</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<!-- ════════════════════════════════
+     SCRIPTS
+════════════════════════════════ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
+/* ════════════════════════════════
+   ⚙️  CONFIG — แก้ไขค่านี้ด้วยข้อมูลจาก Firebase Console
+════════════════════════════════ */
+const firebaseConfig = {
+  apiKey: "AIzaSyBQyR5onYESOLb9oh0BnKeiE9gBhg8CY5M",
+  authDomain: "team-trip-2026.firebaseapp.com",
+  databaseURL: "https://team-trip-2026-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "team-trip-2026",
+  storageBucket: "team-trip-2026.firebasestorage.app",
+  messagingSenderId: "27702557967",
+  appId: "1:27702557967:web:132947f693c739550a527a"
+};
+/* ════════════════════════════════ */
+
+const IS_CONFIGURED = !FIREBASE_CONFIG.apiKey.includes('PASTE');
+
+/* ── TYPE META ── */
+const TYPE_META = {
+  sea:     { label: '🌊 ทะเล/เกาะ',        bg: '#e0f2fe', fg: '#0369a1' },
+  nature:  { label: '⛰️ ภูเขา/ธรรมชาติ',   bg: '#dcfce7', fg: '#15803d' },
+  history: { label: '🏛️ ประวัติศาสตร์',    bg: '#fef9c3', fg: '#854d0e' },
+  food:    { label: '🍜 กิน/ช้อปปิ้ง',     bg: '#fce7f3', fg: '#9d174d' },
+  resort:  { label: '🏖️ พักผ่อน/รีสอร์ท', bg: '#fff7ed', fg: '#c2410c' },
+};
+
+/* ── PROVINCE COORDS ── */
+const COORDS = {
+  'เชียงใหม่':[18.788,98.985],'เชียงราย':[19.910,99.840],'น่าน':[18.783,100.773],
+  'แม่ฮ่องสอน':[19.301,97.969],'พะเยา':[19.163,99.903],'ลำปาง':[18.289,99.498],
+  'สุโขทัย':[17.011,99.828],'ตาก':[16.877,99.126],'กาญจนบุรี':[14.002,99.548],
+  'อยุธยา':[14.369,100.588],'ลพบุรี':[14.800,100.654],'ราชบุรี':[13.536,99.813],
+  'เพชรบุรี':[13.112,99.939],'สระบุรี':[14.530,100.910],'ชลบุรี':[13.361,100.984],
+  'ระยอง':[12.681,101.282],'จันทบุรี':[12.610,102.104],'ตราด':[12.243,102.513],
+  'นครราชสีมา':[14.980,102.098],'เลย':[17.486,101.722],'ขอนแก่น':[16.432,102.824],
+  'อุบลราชธานี':[15.245,104.847],'นครพนม':[17.392,104.782],'สกลนคร':[17.155,104.149],
+  'บึงกาฬ':[18.361,103.647],'มุกดาหาร':[16.542,104.724],'ประจวบคีรีขันธ์':[11.813,99.796],
+  'ชุมพร':[10.493,99.180],'สุราษฎร์ธานี':[9.138,99.321],'นครศรีธรรมราช':[8.432,99.963],
+  'กระบี่':[8.086,98.906],'ภูเก็ต':[7.952,98.338],'พังงา':[8.451,98.526],
+  'ตรัง':[7.559,99.611],'สตูล':[6.624,100.067],
+};
+const DIST = {
+  'เชียงใหม่':690,'เชียงราย':790,'น่าน':680,'แม่ฮ่องสอน':870,'พะเยา':720,
+  'ลำปาง':620,'สุโขทัย':430,'ตาก':440,'กาญจนบุรี':130,'อยุธยา':80,
+  'ลพบุรี':155,'ราชบุรี':110,'เพชรบุรี':160,'สระบุรี':110,'ชลบุรี':100,
+  'ระยอง':175,'จันทบุรี':250,'ตราด':315,'นครราชสีมา':260,'เลย':490,
+  'ขอนแก่น':445,'อุบลราชธานี':575,'นครพนม':660,'สกลนคร':610,'บึงกาฬ':680,
+  'มุกดาหาร':590,'ประจวบคีรีขันธ์':320,'ชุมพร':470,'สุราษฎร์ธานี':640,
+  'นครศรีธรรมราช':780,'กระบี่':810,'ภูเก็ต':860,'พังงา':810,'ตรัง':840,'สตูล':910,
+};
+
+/* ── STATE ── */
+let places  = [];
+let filter  = 'all';
+let db, placesRef;
+const BKK   = [13.756, 100.502];
+
+/* ── VOTED (localStorage) ── */
+function getVoted() {
+  try { return new Set(JSON.parse(localStorage.getItem('team_trip_voted') || '[]')); }
+  catch { return new Set(); }
+}
+function saveVoted(set) {
+  try { localStorage.setItem('team_trip_voted', JSON.stringify([...set])); } catch {}
+}
+
+/* ══════════════ MAP ══════════════ */
+let map, markerLayer = {};
+
+function initMap() {
+  map = L.map('map').setView([13.0,101.5], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 18,
+  }).addTo(map);
+  const bIcon = L.divIcon({
+    html: `<div style="background:#0d9488;color:white;border-radius:50%;width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:18px;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,.35)">🏠</div>`,
+    className:'', iconAnchor:[18,18], iconSize:[36,36],
+  });
+  L.marker(BKK, { icon: bIcon, zIndexOffset: 9999 }).addTo(map)
+    .bindPopup('<b style="font-size:14px">กรุงเทพมหานคร</b><br><span style="color:#64748b;font-size:12px">จุดออกเดินทาง</span>');
+}
+
+function placeMarker(p) {
+  const c = COORDS[p.prov];
+  if (!c) return;
+  const voted  = getVoted();
+  const topId  = [...places].sort((a,b)=>b.votes-a.votes).find(x=>x.votes>0)?.id;
+  const isTop  = p.id === topId;
+  const bg     = isTop ? '#f59e0b' : (p.votes > 0 ? '#0d9488' : '#94a3b8');
+  const txt    = p.votes > 0 ? p.votes : '+';
+  const icon   = L.divIcon({
+    html: `<div style="background:${bg};color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.28)">${txt}</div>`,
+    className:'', iconAnchor:[16,16], iconSize:[32,32],
+  });
+  if (markerLayer[p.id]) map.removeLayer(markerLayer[p.id]);
+  const meta = TYPE_META[p.type] || TYPE_META.nature;
+  markerLayer[p.id] = L.marker(c, { icon }).addTo(map)
+    .bindPopup(`<b style="font-size:13px">${p.name}</b><br>
+      <span style="color:#64748b;font-size:12px">${p.prov} · ${meta.label}</span><br>
+      <span style="color:#0d9488;font-weight:700">❤️ ${p.votes} โหวต</span><br>
+      <span style="color:#94a3b8;font-size:11px">เสนอโดย ${p.who}</span>`);
+}
+
+function refreshAllMarkers() { places.forEach(p => placeMarker(p)); }
+
+/* ══════════════ FIREBASE ══════════════ */
+function initFirebase() {
+  firebase.initializeApp(FIREBASE_CONFIG);
+  db        = firebase.database();
+  placesRef = db.ref('trip-2026/places');
+
+  // Connection state
+  firebase.database().ref('.info/connected').on('value', snap => {
+    const bar = document.getElementById('status-bar');
+    const txt = document.getElementById('status-text');
+    if (snap.val()) {
+      bar.className = '';
+      txt.textContent = 'เชื่อมต่อ Firebase สำเร็จ — อัปเดต real-time';
+      document.getElementById('live-wrap').innerHTML =
+        `<div class="live-badge"><div class="live-dot"></div>LIVE</div>`;
+      document.getElementById('live-badge-lb').innerHTML =
+        `<div class="live-badge" style="font-size:0.7rem"><div class="live-dot"></div>LIVE</div>`;
+      document.getElementById('btn-submit').disabled = false;
+    } else {
+      bar.className = 'offline';
+      txt.textContent = 'ขาดการเชื่อมต่อ — กำลังเชื่อมต่อใหม่...';
+      document.getElementById('btn-submit').disabled = true;
+    }
+  });
+
+  // Real-time listener
+  placesRef.on('value', snapshot => {
+    const data = snapshot.val() || {};
+    places = Object.entries(data).map(([id, p]) => ({ ...p, id }));
+    places.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    refreshAllMarkers();
+    render();
+  });
+}
+
+/* ══════════════ ADD PLACE ══════════════ */
+function addPlace() {
+  const name = document.getElementById('f-name').value.trim();
+  const prov = document.getElementById('f-prov').value;
+  const type = document.getElementById('f-type').value;
+  const desc = document.getElementById('f-desc').value.trim();
+  const who  = document.getElementById('f-who').value.trim();
+
+  if (!name) { toast('⚠️ กรุณาใส่ชื่อสถานที่'); return; }
+  if (!prov) { toast('⚠️ กรุณาเลือกจังหวัด');   return; }
+  if (!who)  { toast('⚠️ กรุณาใส่ชื่อผู้เสนอ'); return; }
+
+  const now = new Date();
+  const btn = document.getElementById('btn-submit');
+  btn.disabled = true;
+  btn.textContent = '⏳ กำลังบันทึก...';
+
+  placesRef.push({
+    name, prov, type, desc, who, votes: 0,
+    createdAt: now.getTime(),
+    at: now.toLocaleTimeString('th-TH', { hour:'2-digit', minute:'2-digit' }),
+  }).then(() => {
+    document.getElementById('f-name').value = '';
+    document.getElementById('f-desc').value = '';
+    btn.disabled = false;
+    btn.textContent = '➕ เพิ่มสถานที่';
+    toast(`✅ เพิ่ม "${name}" เรียบร้อย!`);
+    if (COORDS[prov]) map.flyTo(COORDS[prov], 9, { duration: 1.2 });
+  }).catch(err => {
+    btn.disabled = false;
+    btn.textContent = '➕ เพิ่มสถานที่';
+    toast('❌ เกิดข้อผิดพลาด: ' + err.message);
+  });
+}
+
+/* ══════════════ VOTE ══════════════ */
+function toggleVote(id) {
+  const voted = getVoted();
+  const ref   = db.ref(`trip-2026/places/${id}/votes`);
+
+  if (voted.has(id)) {
+    ref.transaction(v => Math.max(0, (v || 0) - 1));
+    voted.delete(id);
+    toast('💔 ยกเลิกโหวตแล้ว');
+  } else {
+    ref.transaction(v => (v || 0) + 1);
+    voted.add(id);
+    toast('❤️ โหวตแล้ว!');
+  }
+  saveVoted(voted);
+}
+
+/* ══════════════ FILTER ══════════════ */
+function setFilter(f, btn) {
+  filter = f;
+  document.querySelectorAll('.chip').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  renderGrid();
+}
+
+/* ══════════════ RENDER ══════════════ */
+function render() {
+  renderStats();
+  renderLB();
+  renderGrid();
+}
+
+function renderStats() {
+  const total = places.reduce((s,p) => s + (p.votes||0), 0);
+  const top   = [...places].sort((a,b)=>(b.votes||0)-(a.votes||0)).find(p=>(p.votes||0)>0);
+  document.getElementById('s-places').textContent = places.length;
+  document.getElementById('s-votes').textContent  = total;
+  document.getElementById('s-top').textContent    = top ? top.name : '—';
+}
+
+function renderLB() {
+  const el     = document.getElementById('lb-body');
+  const sorted = [...places].sort((a,b)=>(b.votes||0)-(a.votes||0)).slice(0,6);
+  if (!sorted.length) {
+    el.innerHTML = `<div class="empty"><div class="big">🗳️</div><p>ยังไม่มีสถานที่<br>เพิ่มและโหวตเพื่อดูอันดับ!</p></div>`;
+    return;
+  }
+  const max    = sorted[0].votes || 1;
+  const medals = ['🥇','🥈','🥉','4','5','6'];
+  el.innerHTML = sorted.map((p,i) => {
+    const meta = TYPE_META[p.type] || TYPE_META.nature;
+    const pct  = Math.max(4, ((p.votes||0)/max)*100);
+    return `<div class="lb-item">
+      <div class="lb-medal">${medals[i]}</div>
+      <div class="lb-info">
+        <div class="lb-name">${p.name}</div>
+        <div class="lb-meta">${p.prov} · ${meta.label}</div>
+        <div class="lb-bar-wrap"><div class="lb-bar-fill" style="width:${pct.toFixed(1)}%"></div></div>
+      </div>
+      <div class="lb-count">❤️ ${p.votes||0}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderGrid() {
+  const el      = document.getElementById('grid');
+  const voted   = getVoted();
+  const sorted  = [...places].sort((a,b)=>(b.votes||0)-(a.votes||0));
+  const filt    = filter==='all' ? sorted : sorted.filter(p=>p.type===filter);
+  const topId   = sorted.find(p=>(p.votes||0)>0)?.id;
+
+  document.getElementById('count-lbl').textContent = filt.length;
+
+  if (!filt.length) {
+    el.innerHTML = `<div style="grid-column:1/-1"><div class="empty"><div class="big">${filter==='all'?'✈️':'🔍'}</div><p>${filter==='all'?'ยังไม่มีสถานที่ที่เสนอมา<br>เป็นคนแรกที่เสนอสถานที่ให้ทีม!':'ไม่มีสถานที่ในประเภทนี้'}</p></div></div>`;
+    return;
+  }
+
+  el.innerHTML = filt.map(p => {
+    const meta   = TYPE_META[p.type] || TYPE_META.nature;
+    const isVote = voted.has(p.id);
+    const isTop  = p.id === topId && (p.votes||0) > 0;
+    const dist   = DIST[p.prov] ? `<div class="place-dist">🚗 ห่างจาก กทม. ~${DIST[p.prov].toLocaleString()} กม.</div>` : '';
+    return `<div class="place-card${isTop?' top-voted':''}">
+      <div class="place-body">
+        <div class="type-badge" style="background:${meta.bg};color:${meta.fg}">${meta.label}</div>
+        ${isTop?'<div style="font-size:0.75rem;color:#d97706;font-weight:700;margin-bottom:4px">🏆 อันดับ 1 ของทีม!</div>':''}
+        <div class="place-name">${p.name}</div>
+        <div class="place-prov">📍 ${p.prov}</div>
+        ${dist}
+        ${p.desc?`<div class="place-desc">${p.desc}</div>`:''}
+        <div class="place-by">เสนอโดย <strong>${p.who}</strong> · ${p.at||''}</div>
+      </div>
+      <div class="place-foot">
+        <div class="vote-score">
+          <div class="vote-num">${p.votes||0}</div>
+          <div class="vote-lbl">โหวต</div>
+        </div>
+        <button class="btn-vote${isVote?' voted':''}" onclick="toggleVote('${p.id}')">
+          ${isVote?'❤️ โหวตแล้ว':'🤍 โหวต'}
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ══════════════ TOAST ══════════════ */
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.remove('show'), 2600);
+}
+
+/* ══════════════ BOOT ══════════════ */
+initMap();
+
+if (!IS_CONFIGURED) {
+  document.getElementById('setup-overlay').style.display = 'flex';
+  document.getElementById('status-bar').className = 'offline';
+  document.getElementById('status-text').textContent = '⚠️ ยังไม่ได้ตั้งค่า Firebase — ดูคำแนะนำด้านบน';
+  document.getElementById('btn-submit').disabled = true;
+  document.getElementById('grid').innerHTML = `<div style="grid-column:1/-1"><div class="empty"><div class="big">🔧</div><p>ตั้งค่า Firebase ก่อนใช้งาน</p></div></div>`;
+  document.getElementById('lb-body').innerHTML = `<div class="empty"><div class="big">🔧</div><p>รอการตั้งค่า</p></div>`;
+} else {
+  initFirebase();
+}
+</script>
+</body>
+</html>
